@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240mm" height="80mm" viewBox="0 0 240 80">
+  <title>回纹花边</title>
+  <g fill="none" stroke="#b3202a" stroke-width="0.4" stroke-linejoin="round" stroke-linecap="round">
+    <rect x="6" y="6" width="228" height="68"/>
+    <rect x="16" y="16" width="208" height="48"/>
+    <polyline points="22,24 38,24 38,56 26,56 26,34 32,34 32,48"/>
+    <polyline points="46,24 62,24 62,56 50,56 50,34 56,34 56,48"/>
+    <polyline points="70,24 86,24 86,56 74,56 74,34 80,34 80,48"/>
+    <polyline points="94,24 110,24 110,56 98,56 98,34 104,34 104,48"/>
+    <polyline points="118,24 134,24 134,56 122,56 122,34 128,34 128,48"/>
+    <polyline points="142,24 158,24 158,56 146,56 146,34 152,34 152,48"/>
+    <polyline points="166,24 182,24 182,56 170,56 170,34 176,34 176,48"/>
+    <polyline points="190,24 206,24 206,56 194,56 194,34 200,34 200,48"/>
+  </g>
+</svg>

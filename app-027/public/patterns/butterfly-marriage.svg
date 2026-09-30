@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240mm" height="120mm" viewBox="0 0 240 120">
+  <title>双蝶婚庆窗花</title>
+  <g fill="none" stroke="#b3202a" stroke-width="0.4" stroke-linejoin="round" stroke-linecap="round">
+    <circle cx="60" cy="60" r="52"/>
+    <circle cx="60" cy="60" r="46"/>
+    <circle cx="180" cy="60" r="52"/>
+    <circle cx="180" cy="60" r="46"/>
+      <path transform="translate(60 62) scale(0.78)" d="M0 0C-18 -22 -44 -16 -44 4C-44 20 -20 24 0 10Z"/>
+      <path transform="translate(60 62) scale(0.78)" d="M0 0C18 -22 44 -16 44 4C44 20 20 24 0 10Z"/>
+      <path transform="translate(60 62) scale(0.78)" d="M0 8C-14 10 -30 22 -24 34C-18 44 -4 34 0 22Z"/>
+      <path transform="translate(60 62) scale(0.78)" d="M0 8C14 10 30 22 24 34C18 44 4 34 0 22Z"/>
+      <ellipse transform="translate(60 62) scale(0.78)" cx="0" cy="8" rx="3" ry="16"/>
+      <path transform="translate(60 62) scale(0.78)" d="M-2 -6C-8 -14 -14 -16 -18 -14"/>
+      <path transform="translate(60 62) scale(0.78)" d="M2 -6C8 -14 14 -16 18 -14"/>
+      <circle transform="translate(60 62) scale(0.78)" cx="-12" cy="-2" r="3"/>
+      <circle transform="translate(60 62) scale(0.78)" cx="12" cy="-2" r="3"/>
+      <path transform="translate(180 62) scale(0.78)" d="M0 0C-18 -22 -44 -16 -44 4C-44 20 -20 24 0 10Z"/>
+      <path transform="translate(180 62) scale(0.78)" d="M0 0C18 -22 44 -16 44 4C44 20 20 24 0 10Z"/>
+      <path transform="translate(180 62) scale(0.78)" d="M0 8C-14 10 -30 22 -24 34C-18 44 -4 34 0 22Z"/>
+      <path transform="translate(180 62) scale(0.78)" d="M0 8C14 10 30 22 24 34C18 44 4 34 0 22Z"/>
+      <ellipse transform="translate(180 62) scale(0.78)" cx="0" cy="8" rx="3" ry="16"/>
+      <path transform="translate(180 62) scale(0.78)" d="M-2 -6C-8 -14 -14 -16 -18 -14"/>
+      <path transform="translate(180 62) scale(0.78)" d="M2 -6C8 -14 14 -16 18 -14"/>
+      <circle transform="translate(180 62) scale(0.78)" cx="-12" cy="-2" r="3"/>
+      <circle transform="translate(180 62) scale(0.78)" cx="12" cy="-2" r="3"/>
+    <path d="M120 30L126 60L120 90L114 60Z"/>
+  </g>
+</svg>

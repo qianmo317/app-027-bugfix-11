@@ -1,0 +1,16 @@
+services:
+  app-027:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: app-027-bugfix-11:latest
+    container_name: app-027-bugfix-11
+    ports:
+      - '8207:80'
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '-', 'http://127.0.0.1/healthz']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s

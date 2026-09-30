@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160mm" height="160mm" viewBox="0 0 160 160">
+  <title>生肖·兔</title>
+  <g fill="none" stroke="#b3202a" stroke-width="0.4" stroke-linejoin="round" stroke-linecap="round">
+    <circle cx="80" cy="84" r="76"/>
+    <circle cx="80" cy="84" r="69"/>
+    <ellipse cx="68" cy="42" rx="6" ry="20" transform="rotate(-18 68 42)"/>
+    <ellipse cx="92" cy="42" rx="6" ry="20" transform="rotate(18 92 42)"/>
+    <ellipse cx="68" cy="42" rx="2.4" ry="13" transform="rotate(-18 68 42)"/>
+    <ellipse cx="92" cy="42" rx="2.4" ry="13" transform="rotate(18 92 42)"/>
+    <circle cx="80" cy="74" r="21"/>
+    <circle cx="71" cy="70" r="3.2"/>
+    <circle cx="89" cy="70" r="3.2"/>
+    <path d="M74 82Q80 88 86 82"/>
+    <ellipse cx="80" cy="114" rx="26" ry="20"/>
+    <circle cx="80" cy="120" r="5"/>
+    <path d="M22 22Q19.525 8.7 22 8Q24.475 8.7 22 22Z"/>
+    <path d="M22 22Q35.3 19.525 36 22Q35.3 24.475 22 22Z"/>
+    <path d="M22 22Q24.475 35.3 22 36Q19.525 35.3 22 22Z"/>
+    <path d="M22 22Q8.7 24.475 8 22Q8.7 19.525 22 22Z"/>
+    <path d="M138 22Q135.525 8.7 138 8Q140.475 8.7 138 22Z"/>
+    <path d="M138 22Q151.3 19.525 152 22Q151.3 24.475 138 22Z"/>
+    <path d="M138 22Q140.475 35.3 138 36Q135.525 35.3 138 22Z"/>
+    <path d="M138 22Q124.7 24.475 124 22Q124.7 19.525 138 22Z"/>
+    <path d="M22 138Q19.525 124.7 22 124Q24.475 124.7 22 138Z"/>
+    <path d="M22 138Q35.3 135.525 36 138Q35.3 140.475 22 138Z"/>
+    <path d="M22 138Q24.475 151.3 22 152Q19.525 151.3 22 138Z"/>
+    <path d="M22 138Q8.7 140.475 8 138Q8.7 135.525 22 138Z"/>
+    <path d="M138 138Q135.525 124.7 138 124Q140.475 124.7 138 138Z"/>
+    <path d="M138 138Q151.3 135.525 152 138Q151.3 140.475 138 138Z"/>
+    <path d="M138 138Q140.475 151.3 138 152Q135.525 151.3 138 138Z"/>
+    <path d="M138 138Q124.7 140.475 124 138Q124.7 135.525 138 138Z"/>
+  </g>
+</svg>

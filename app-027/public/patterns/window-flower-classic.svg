@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160mm" height="160mm" viewBox="0 0 160 160">
+  <title>经典八角窗花</title>
+  <g fill="none" stroke="#b3202a" stroke-width="0.4" stroke-linejoin="round" stroke-linecap="round">
+    <circle cx="80" cy="80" r="75"/>
+    <circle cx="80" cy="80" r="62"/>
+    <circle cx="143.286" cy="106.214" r="3.2"/>
+    <circle cx="106.214" cy="143.286" r="3.2"/>
+    <circle cx="53.786" cy="143.286" r="3.2"/>
+    <circle cx="16.714" cy="106.214" r="3.2"/>
+    <circle cx="16.714" cy="53.786" r="3.2"/>
+    <circle cx="53.786" cy="16.714" r="3.2"/>
+    <circle cx="106.214" cy="16.714" r="3.2"/>
+    <circle cx="143.286" cy="53.786" r="3.2"/>
+    <path transform="rotate(0 80 80)" d="M80 76Q75.05 34.2 80 32Q84.95 34.2 80 76Z"/>
+    <path transform="rotate(45 80 80)" d="M80 76Q75.05 34.2 80 32Q84.95 34.2 80 76Z"/>
+    <path transform="rotate(90 80 80)" d="M80 76Q75.05 34.2 80 32Q84.95 34.2 80 76Z"/>
+    <path transform="rotate(135 80 80)" d="M80 76Q75.05 34.2 80 32Q84.95 34.2 80 76Z"/>
+    <path transform="rotate(180 80 80)" d="M80 76Q75.05 34.2 80 32Q84.95 34.2 80 76Z"/>
+    <path transform="rotate(225 80 80)" d="M80 76Q75.05 34.2 80 32Q84.95 34.2 80 76Z"/>
+    <path transform="rotate(270 80 80)" d="M80 76Q75.05 34.2 80 32Q84.95 34.2 80 76Z"/>
+    <path transform="rotate(315 80 80)" d="M80 76Q75.05 34.2 80 32Q84.95 34.2 80 76Z"/>
+    <path transform="rotate(22.5 80 80)" d="M80 78Q77.69 62.8 80 62Q82.31 62.8 80 78Z"/>
+    <path transform="rotate(67.5 80 80)" d="M80 78Q77.69 62.8 80 62Q82.31 62.8 80 78Z"/>
+    <path transform="rotate(112.5 80 80)" d="M80 78Q77.69 62.8 80 62Q82.31 62.8 80 78Z"/>
+    <path transform="rotate(157.5 80 80)" d="M80 78Q77.69 62.8 80 62Q82.31 62.8 80 78Z"/>
+    <path transform="rotate(202.5 80 80)" d="M80 78Q77.69 62.8 80 62Q82.31 62.8 80 78Z"/>
+    <path transform="rotate(247.5 80 80)" d="M80 78Q77.69 62.8 80 62Q82.31 62.8 80 78Z"/>
+    <path transform="rotate(292.5 80 80)" d="M80 78Q77.69 62.8 80 62Q82.31 62.8 80 78Z"/>
+    <path transform="rotate(337.5 80 80)" d="M80 78Q77.69 62.8 80 62Q82.31 62.8 80 78Z"/>
+    <circle cx="80" cy="80" r="4.5"/>
+  </g>
+</svg>

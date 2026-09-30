@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160mm" height="160mm" viewBox="0 0 160 160">
+  <title>缠枝自交花</title>
+  <g fill="none" stroke="#b3202a" stroke-width="0.4" stroke-linejoin="round" stroke-linecap="round">
+    <circle cx="80" cy="80" r="76"/>
+    <circle cx="80" cy="80" r="66"/>
+    <polygon points="80,28 116.77,43.23 132,80 116.77,116.77 80,132 43.23,116.77 28,80 43.23,43.23"/>
+    <path d="M80 30L115.355 115.355L30 80L115.355 44.645L80 130L44.645 44.645L130 80L44.645 115.355L80 30Z"/>
+    <path d="M46 56L114 104L114 56L46 104Z"/>
+    <circle cx="80" cy="80" r="6"/>
+  </g>
+</svg>

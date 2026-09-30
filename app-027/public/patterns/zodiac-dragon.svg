@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160mm" height="160mm" viewBox="0 0 160 160">
+  <title>生肖·龙</title>
+  <g fill="none" stroke="#b3202a" stroke-width="0.4" stroke-linejoin="round" stroke-linecap="round">
+    <circle cx="80" cy="80" r="77"/>
+    <path d="M80 80A52 52 0 0 1 80 72.2A44 44 0 0 0 28 86.6A36 36 0 0 1 124 74.6A28 28 0 0 0 44 84.2A20 20 0 0 1 108 77"/>
+    <path d="M80 16L96 34L80 44L64 34Z"/>
+    <circle cx="74" cy="30" r="2.6"/>
+    <path d="M64 34C48 26 40 16 30 20"/>
+    <path d="M96 34C112 26 120 16 130 20"/>
+    <polygon points="40,89 47,96 40,103 33,96"/>
+    <polygon points="120,89 127,96 120,103 113,96"/>
+    <polygon points="56,123 63,130 56,137 49,130"/>
+    <polygon points="104,123 111,130 104,137 97,130"/>
+    <path d="M20 140C30 128 42 140 52 130"/>
+    <path d="M140 140C130 128 118 140 108 130"/>
+  </g>
+</svg>

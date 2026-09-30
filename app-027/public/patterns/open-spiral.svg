@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160mm" height="160mm" viewBox="0 0 160 160">
+  <title>盘长未闭合纹</title>
+  <g fill="none" stroke="#b3202a" stroke-width="0.4" stroke-linejoin="round" stroke-linecap="round">
+    <circle cx="80" cy="80" r="76"/>
+    <circle cx="80" cy="80" r="68"/>
+    <polyline points="34,34 126,34 126,126 34,126 34,46 114,46 114,114 46,114 46,58 102,58"/>
+    <path d="M20 140C40 118 60 132 80 112C100 92 120 106 140 84"/>
+  </g>
+</svg>
