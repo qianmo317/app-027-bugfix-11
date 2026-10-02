@@ -101,7 +101,7 @@ function remove(id: string, name: string): void {
 
 function copy(id: string): void {
   const p = store.duplicateProject(id)
-  if (p) void router.push(`/design/${id}`)
+  if (p) void router.push(`/design/${p.id}`)
 }
 
 function fmtTime(ts: number): string {

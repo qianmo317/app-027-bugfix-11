@@ -109,7 +109,7 @@ const problems = computed<Problem[]>(() => {
   for (const s of shapes.value) {
     const comp = store.computedOf(s.id)
     for (const c of s.contours) {
-      for (const w of c.warnings) {
+      for (const w of c.warnings ?? []) {
         if (w === 'not_closed') {
           const gap = c.points.length >= 2 ? dist(c.points[0], c.points[c.points.length - 1]) : 0
           out.push({
@@ -283,16 +283,18 @@ function delShape(): void {
   selectedContourId.value = null
 }
 
-function setName(v: string): void {
+function setProjectName(v: string): void {
   const p = project.value
   if (!p) return
-  if (selectedShape.value) {
-    selectedShape.value.name = v
-    store.touch(p)
-  } else {
-    p.name = v
-    store.touch(p)
-  }
+  p.name = v
+  store.touch(p)
+}
+
+function setShapeName(v: string): void {
+  const p = project.value
+  if (!p || !selectedShape.value) return
+  selectedShape.value.name = v
+  store.touch(p)
 }
 
 function addLayer(): void {
@@ -381,7 +383,13 @@ const computedMap = computed(() => {
               :class="{ active: s.id === selectedShapeId }"
               @click="selectedShapeId = s.id"
             >
-              <span class="grow">{{ s.name }}</span>
+              <input
+                class="shape-name-input"
+                :value="s.name"
+                title="形状名"
+                @click.stop
+                @input="setShapeName(($event.target as HTMLInputElement).value)"
+              />
               <span class="tag">L{{ s.layer + 1 }}</span>
               <span class="tag">{{ s.contours.length }}</span>
             </div>
@@ -396,7 +404,7 @@ const computedMap = computed(() => {
           <div class="section-title">项目</div>
           <div class="field">
             <label>项目名</label>
-            <input type="text" :value="project.name" @input="setName(($event.target as HTMLInputElement).value)" />
+            <input type="text" :value="project.name" @input="setProjectName(($event.target as HTMLInputElement).value)" />
           </div>
           <div class="btn-row">
             <button class="tiny" @click="router.push(`/layout/${project.id}`)">进入排版</button>
@@ -620,5 +628,21 @@ const computedMap = computed(() => {
   font-size: 11px;
   color: var(--text-mute);
   line-height: 1.7;
+}
+
+.shape-name-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: inherit;
+  font: inherit;
+  padding: 2px 4px;
+}
+
+.shape-name-input:focus {
+  border-color: var(--line);
+  background: var(--panel-2);
 }
 </style>

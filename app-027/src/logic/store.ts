@@ -1,9 +1,11 @@
-import { reactive, watch } from 'vue'
+import { reactive } from 'vue'
 import {
   DEFAULT_CUT_SETTINGS,
   DEFAULT_EXPORT_CFG,
   DEFAULT_SHEET,
   type BatchCfg,
+  type Bridge,
+  type Contour,
   type ContourWarning,
   type CutSettings,
   type ExportCfg,
@@ -14,7 +16,7 @@ import {
 } from './types'
 import { computeShape, shapeSignature, type ComputedShape } from './pipeline'
 import { buildBatchShape, buildJob, type Job } from './job'
-import { uid } from './geometry'
+import { dist, polygonArea, polylineLength, round3, uid } from './geometry'
 import { importSvgText, type ImportResult } from './importer'
 import { defaultMaterials } from '@/data/materials'
 
@@ -22,8 +24,8 @@ const LS_KEY = 'papercut-plotter-studio/v1'
 
 type Persisted = {
   version: number
-  projects: Project[]
-  materials: MaterialPreset[]
+  projects?: Project[]
+  materials?: MaterialPreset[]
 }
 
 type StoreState = {
@@ -44,6 +46,18 @@ export const state = reactive<StoreState>({
 const computedCache = reactive<Record<string, ComputedShape>>({})
 const batchCache = new Map<string, ComputedShape>()
 
+const VALID_WARNINGS: ContourWarning[] = [
+  'not_closed',
+  'self_intersect',
+  'duplicate',
+  'offset_clipped',
+  'offset_failed',
+  'bridge_degraded',
+  'too_short',
+]
+
+const DEFAULT_BATCH: BatchCfg = { enabled: false, rows: 2, cols: 2, gapXMm: 5, gapYMm: 5, sharedEdge: false, mode: 'repeat' }
+
 function canUseStorage(): boolean {
   try {
     return typeof localStorage !== 'undefined'
@@ -52,35 +66,187 @@ function canUseStorage(): boolean {
   }
 }
 
-export function loadState(): void {
-  state.materials = defaultMaterials()
-  if (!canUseStorage()) {
-    state.ready = true
-    return
-  }
-  try {
-    const raw = localStorage.getItem(LS_KEY)
-    if (raw) {
-      const parsed = JSON.parse(raw) as Persisted
-      if (parsed && Array.isArray(parsed.projects) && parsed.projects.length > 0) {
-        state.projects = [normalizeProject(parsed.projects[0])]
-      }
-    }
-  } catch (e) {
-    state.lastError = `本地数据读取失败：${(e as Error).message}`
-  }
-  state.ready = true
-  recomputeAll()
+function isNum(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v)
 }
 
+function numOr(v: unknown, fallback: number): number {
+  return isNum(v) ? (v as number) : fallback
+}
+
+function strOr(v: unknown, fallback: string): string {
+  return typeof v === 'string' && v.length > 0 ? v : fallback
+}
+
+// ---------------- 旧数据兼容：缺什么补什么 ----------------
+
+function normalizeBridge(raw: unknown, fallbackWidth: number): Bridge {
+  const b = (raw ?? {}) as Record<string, unknown>
+  return {
+    atIndex: Math.max(0, Math.trunc(numOr((b as { atIndex?: unknown }).atIndex, 0))),
+    widthMm: numOr((b as { widthMm?: unknown }).widthMm, fallbackWidth),
+  }
+}
+
+function normalizeContour(raw: unknown): Contour {
+  const c = (raw ?? {}) as Record<string, unknown>
+  const rawPts = Array.isArray(c.points) ? c.points : []
+  let points = rawPts
+    .map((q) => {
+      const p = (q ?? {}) as Record<string, unknown>
+      return { x: round3(numOr(p.x, 0)), y: round3(numOr(p.y, 0)) }
+    })
+    .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
+  const rawWarnings = Array.isArray(c.warnings) ? c.warnings : []
+  const hadNotClosed = rawWarnings.includes('not_closed')
+  // 旧数据没有 closed 标记：≥3 点且没标过 not_closed 的视为闭合
+  const closedMissing = c.closed === undefined || typeof c.closed !== 'boolean'
+  let closed = c.closed === true || (closedMissing && points.length >= 3 && !hadNotClosed)
+  // 首尾点重复（导入器风格）时去掉冗余末点
+  if (closed && points.length >= 4 && dist(points[0], points[points.length - 1]) <= 1e-6) {
+    points = points.slice(0, -1)
+  }
+  const warnings = rawWarnings.filter((w): w is ContourWarning =>
+    VALID_WARNINGS.includes(w as ContourWarning),
+  )
+  const bridges = Array.isArray(c.bridges)
+    ? c.bridges.map((b) => normalizeBridge(b, DEFAULT_CUT_SETTINGS.bridgeWidthMm))
+    : []
+  return {
+    id: strOr(c.id, uid('c')),
+    points,
+    closed,
+    // 面积 / 周长是派分值：旧数据没有或不对时按点重算
+    area: isNum(c.area) && closed ? c.area : closed ? polygonArea(points) : 0,
+    length: isNum(c.length) ? c.length : polylineLength(points, closed),
+    // holes 是包含树派分值，加载后由 recompute 重建
+    holes: Array.isArray(c.holes) ? (c.holes.filter((h) => typeof h === 'string') as string[]) : [],
+    bridges,
+    warnings,
+  }
+}
+
+function normalizeShape(raw: unknown, idx: number): Shape {
+  const s = (raw ?? {}) as Record<string, unknown>
+  return {
+    id: strOr(s.id, uid('s')),
+    name: strOr(s.name, `形状 ${idx + 1}`),
+    contours: Array.isArray(s.contours) ? s.contours.map((c) => normalizeContour(c)) : [],
+    layer: Math.max(0, Math.trunc(numOr(s.layer, 0))),
+  }
+}
+
+function normalizeSettings(raw: unknown): CutSettings {
+  const s = (raw ?? {}) as Partial<CutSettings>
+  const out: CutSettings = { ...DEFAULT_CUT_SETTINGS, ...(typeof raw === 'object' && raw ? raw : {}) }
+  out.order = 'inner_first'
+  out.bridgeRule = s.bridgeRule === 'by_length' || s.bridgeRule === 'manual' ? s.bridgeRule : 'by_area'
+  out.travelOptimize = s.travelOptimize === 'nearest' ? 'nearest' : 'nearest_2opt'
+  out.areaThresholdMm2 = numOr(s.areaThresholdMm2, DEFAULT_CUT_SETTINGS.areaThresholdMm2)
+  out.bridgeWidthMm = numOr(s.bridgeWidthMm, DEFAULT_CUT_SETTINGS.bridgeWidthMm)
+  out.bridgeEveryMm = numOr(s.bridgeEveryMm, DEFAULT_CUT_SETTINGS.bridgeEveryMm)
+  out.toleranceMm = numOr(s.toleranceMm, DEFAULT_CUT_SETTINGS.toleranceMm)
+  out.closeToleranceMm = numOr(s.closeToleranceMm, DEFAULT_CUT_SETTINGS.closeToleranceMm)
+  out.useBladeOffset = s.useBladeOffset === true
+  return out
+}
+
+function normalizeExport(raw: unknown): ExportCfg {
+  const e = (raw ?? {}) as Partial<ExportCfg>
+  return {
+    format: e.format === 'gcode' || e.format === 'svg' ? e.format : 'plt',
+    unit: e.unit === 'mm' ? 'mm' : '0.025mm',
+    origin: e.origin === 'top_left' ? 'top_left' : 'bottom_left',
+    yFlip: e.yFlip !== false,
+    scale: numOr(e.scale, 1),
+  }
+}
+
+function normalizeSheet(raw: unknown): Sheet {
+  const s = (raw ?? {}) as Partial<Sheet>
+  return {
+    widthMm: numOr(s.widthMm, DEFAULT_SHEET.widthMm),
+    heightMm: numOr(s.heightMm, DEFAULT_SHEET.heightMm),
+    name: strOr(s.name, DEFAULT_SHEET.name),
+  }
+}
+
+function normalizeBatch(raw: unknown): BatchCfg {
+  const b = (raw ?? {}) as Partial<BatchCfg>
+  return {
+    enabled: b.enabled === true,
+    rows: Math.max(1, Math.round(numOr(b.rows, DEFAULT_BATCH.rows))),
+    cols: Math.max(1, Math.round(numOr(b.cols, DEFAULT_BATCH.cols))),
+    gapXMm: Math.max(0, numOr(b.gapXMm, DEFAULT_BATCH.gapXMm)),
+    gapYMm: Math.max(0, numOr(b.gapYMm, DEFAULT_BATCH.gapYMm)),
+    sharedEdge: b.sharedEdge === true,
+    mode: b.mode === 'four_way' ? 'four_way' : 'repeat',
+  }
+}
+
+export function normalizeProject(raw: unknown): Project {
+  const p = (raw ?? {}) as Record<string, unknown>
+  const now = Date.now()
+  const createdAt = numOr(p.createdAt, now)
+  const settings = normalizeSettings(p.settings)
+  const shapes = Array.isArray(p.shapes)
+    ? p.shapes.map((s, i) => normalizeShape(s, i))
+    : []
+  const project: Project = {
+    id: strOr(p.id, uid('p')),
+    name: strOr(p.name, '未命名纹样'),
+    createdAt,
+    updatedAt: numOr(p.updatedAt, createdAt),
+    shapes,
+    settings,
+    export: normalizeExport(p.export),
+    sheet: normalizeSheet(p.sheet),
+    materialId: strOr(p.materialId, state.materials[0]?.id ?? ''),
+    layerNames: Array.isArray(p.layerNames)
+      ? (p.layerNames.filter((n) => typeof n === 'string') as string[])
+      : [],
+    batch: p.batch === undefined ? undefined : normalizeBatch(p.batch),
+    batchShapeId: typeof p.batchShapeId === 'string' ? p.batchShapeId : undefined,
+  }
+  if (project.layerNames.length === 0) project.layerNames = ['图层 1']
+  // 批量排版指向的形状不在了就清空，避免打开时错用到别的形状
+  if (project.batchShapeId && !shapes.some((s) => s.id === project.batchShapeId)) {
+    project.batchShapeId = shapes[0]?.id
+  }
+  return project
+}
+
+function normalizeMaterial(raw: unknown): MaterialPreset | null {
+  const m = (raw ?? {}) as Record<string, unknown>
+  const id = strOr(m.id, '')
+  if (!id) return null
+  return {
+    id,
+    name: strOr(m.name, '未命名材料'),
+    paper: strOr(m.paper, 'cardstock'),
+    force: numOr(m.force, 100),
+    speedMmS: numOr(m.speedMmS, 40),
+    passes: Math.max(1, Math.round(numOr(m.passes, 1))),
+    bladeOffsetMm: Math.max(0, numOr(m.bladeOffsetMm, 0)),
+    backing: strOr(m.backing, ''),
+  }
+}
+
+// ---------------- 持久化：改动立即写盘 ----------------
+
 export function saveNow(): void {
-  if (!canUseStorage()) return
+  if (!canUseStorage() || !state.ready) return
   try {
     const data: Persisted = { version: 1, projects: state.projects, materials: state.materials }
     localStorage.setItem(LS_KEY, JSON.stringify(data))
   } catch (e) {
     state.lastError = `本地保存失败：${(e as Error).message}`
   }
+}
+
+/** 立即保存（用户改动入口），失败信息也立即反映到界面 */
+function persist(): void {
+  saveNow()
 }
 
 let saveTimer: number | null = null
@@ -92,8 +258,51 @@ export function scheduleSave(): void {
   }, 250)
 }
 
-function normalizeProject(p: Project): Project {
-  return p
+/** 页面关闭 / 刷新前把最后的改动写出去 */
+function flushBeforeUnload(): void {
+  if (saveTimer !== null) {
+    clearTimeout(saveTimer)
+    saveTimer = null
+  }
+  saveNow()
+}
+
+let initialized = false
+export function initStore(): void {
+  if (initialized) return
+  initialized = true
+  loadState()
+  if (canUseStorage() && typeof window !== 'undefined') {
+    window.addEventListener('pagehide', flushBeforeUnload)
+    window.addEventListener('beforeunload', flushBeforeUnload)
+  }
+}
+
+export function loadState(): void {
+  state.materials = defaultMaterials()
+  if (!canUseStorage()) {
+    state.ready = true
+    return
+  }
+  let loaded: unknown = null
+  try {
+    const raw = localStorage.getItem(LS_KEY)
+    if (raw) loaded = JSON.parse(raw)
+  } catch (e) {
+    state.lastError = `本地数据读取失败：${(e as Error).message}`
+  }
+  const parsed = (loaded ?? {}) as Persisted
+  if (Array.isArray(parsed.materials)) {
+    const mats = parsed.materials.map(normalizeMaterial).filter((m): m is MaterialPreset => m !== null)
+    if (mats.length > 0) state.materials = mats
+  }
+  if (Array.isArray(parsed.projects)) {
+    state.projects = parsed.projects.map(normalizeProject)
+  }
+  state.ready = true
+  recomputeAll(true)
+  // 旧数据补齐字段后回写一次，之后每次刷新读到的都是完整数据
+  saveNow()
 }
 
 export function materialOf(p: Project): MaterialPreset | null {
@@ -186,7 +395,7 @@ function newProject(name: string, shapes: Shape[]): Project {
     sheet: { ...DEFAULT_SHEET },
     materialId: state.materials[0]?.id ?? '',
     layerNames: ['图层 1'],
-    batch: { enabled: false, rows: 2, cols: 2, gapXMm: 5, gapYMm: 5, sharedEdge: false, mode: 'repeat' },
+    batch: { ...DEFAULT_BATCH },
   }
 }
 
@@ -194,7 +403,7 @@ export function createProjectFromShapes(name: string, shapes: Shape[]): Project 
   const p = newProject(name, shapes)
   state.projects.unshift(p)
   recomputeProject(p, true)
-  scheduleSave()
+  persist()
   return p
 }
 
@@ -209,23 +418,68 @@ export function getProject(id: string): Project | undefined {
 export function deleteProject(id: string): void {
   const i = state.projects.findIndex((p) => p.id === id)
   if (i >= 0) {
-    state.projects.splice(i, 1)
-    scheduleSave()
+    const [removed] = state.projects.splice(i, 1)
+    for (const s of removed.shapes) delete computedCache[s.id]
+    persist()
+  }
+}
+
+/** 深拷贝一个轮廓（复制项目时重新编号，副本与原件互不影响） */
+function cloneContour(c: Contour): Contour {
+  return {
+    id: uid('c'),
+    points: c.points.map((q) => ({ ...q })),
+    closed: c.closed,
+    area: c.area,
+    length: c.length,
+    holes: [],
+    bridges: c.bridges.map((b) => ({ ...b })),
+    warnings: [...c.warnings],
+  }
+}
+
+function cloneShape(s: Shape, contourIdMap: Map<string, string>): Shape {
+  const contours = s.contours.map(cloneContour)
+  s.contours.forEach((c, i) => contourIdMap.set(c.id, contours[i].id))
+  return {
+    id: uid('s'),
+    name: s.name,
+    contours,
+    layer: s.layer,
   }
 }
 
 export function duplicateProject(id: string): Project | null {
   const src = getProject(id)
   if (!src) return null
-  const copy: Project = { ...src, id: uid('p'), name: `${src.name} 副本` }
+  const now = Date.now()
+  const contourIdMap = new Map<string, string>()
+  const shapes = src.shapes.map((s) => cloneShape(s, contourIdMap))
+  const shapeIdMap = new Map<string, string>()
+  src.shapes.forEach((s, i) => shapeIdMap.set(s.id, shapes[i].id))
+  const copy: Project = {
+    ...src,
+    id: uid('p'),
+    name: `${src.name} 副本`,
+    createdAt: now,
+    updatedAt: now,
+    shapes,
+    settings: { ...src.settings },
+    export: { ...src.export },
+    sheet: { ...src.sheet },
+    layerNames: [...src.layerNames],
+    batch: src.batch ? { ...src.batch } : undefined,
+    batchShapeId: src.batchShapeId ? shapeIdMap.get(src.batchShapeId) ?? shapes[0]?.id : undefined,
+  }
   state.projects.unshift(copy)
-  scheduleSave()
+  recomputeProject(copy, true)
+  persist()
   return copy
 }
 
 export function touch(p: Project): void {
   p.updatedAt = Date.now()
-  scheduleSave()
+  persist()
 }
 
 export function addShape(p: Project, shape: Shape): void {
@@ -239,6 +493,7 @@ export function removeShape(p: Project, shapeId: string): void {
   if (i >= 0) {
     p.shapes.splice(i, 1)
     delete computedCache[shapeId]
+    if (p.batchShapeId === shapeId) p.batchShapeId = p.shapes[0]?.id
     touch(p)
   }
 }
@@ -260,7 +515,7 @@ export function updateSheet(p: Project, sheet: Sheet): void {
 }
 
 export function updateBatch(p: Project, patch: Partial<BatchCfg>): void {
-  if (!p.batch) p.batch = { enabled: false, rows: 2, cols: 2, gapXMm: 5, gapYMm: 5, sharedEdge: false, mode: 'repeat' }
+  if (!p.batch) p.batch = { ...DEFAULT_BATCH }
   Object.assign(p.batch, patch)
   touch(p)
 }
@@ -278,6 +533,8 @@ export function closeAllOpen(p: Project): number {
     for (const c of shape.contours) {
       if (!c.closed && c.points.length >= 3) {
         c.closed = true
+        c.area = polygonArea(c.points)
+        c.length = polylineLength(c.points, true)
         c.warnings = c.warnings.filter((w) => w !== 'not_closed')
         n += 1
       }
@@ -295,6 +552,8 @@ export function closeContour(p: Project, contourId: string): boolean {
     for (const c of shape.contours) {
       if (c.id === contourId && !c.closed && c.points.length >= 3) {
         c.closed = true
+        c.area = polygonArea(c.points)
+        c.length = polylineLength(c.points, true)
         c.warnings = c.warnings.filter((w) => w !== 'not_closed')
         recomputeProject(p, true)
         touch(p)
@@ -360,7 +619,7 @@ export function applySymmetry(p: Project, shapeId: string, op: 'mirror_x' | 'mir
         const r = fn(q.x, q.y)
         return { x: Math.round(r.x * 1000) / 1000, y: Math.round(r.y * 1000) / 1000 }
       })
-      return { ...c, id: uid('c'), points: pts, holes: [], bridges: [], warnings: [] }
+      return cloneContour({ ...c, points: pts, holes: [], bridges: [], warnings: [] })
     })
     return { id: uid('s'), name: `${shape.name} 对称`, contours, layer: shape.layer }
   }
@@ -388,7 +647,7 @@ export function upsertMaterial(m: MaterialPreset): void {
   const i = state.materials.findIndex((x) => x.id === m.id)
   if (i >= 0) state.materials[i] = { ...m }
   else state.materials.push({ ...m })
-  scheduleSave()
+  persist()
 }
 
 export function deleteMaterial(id: string): void {
@@ -401,7 +660,7 @@ export function deleteMaterial(id: string): void {
         recomputeProject(p, true)
       }
     }
-    scheduleSave()
+    persist()
   }
 }
 
@@ -423,16 +682,9 @@ export function addImportedShapes(p: Project, shapes: Shape[]): void {
   touch(p)
 }
 
-watch(
-  () => [state.projects, state.materials],
-  () => {
-    if (state.ready) scheduleSave()
-  },
-  { deep: true },
-)
-
 export const store = {
   state,
+  initStore,
   loadState,
   saveNow,
   scheduleSave,

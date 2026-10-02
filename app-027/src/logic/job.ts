@@ -2,7 +2,7 @@ import type { BatchCfg, Contour, Pt, Shape } from './types'
 import type { ComputedShape } from './pipeline'
 import { dedupeSharedEdges } from './exporters'
 import { makeContour } from './cleanup'
-import { boundsOf, dist } from './geometry'
+import { boundsOf, dist, uid } from './geometry'
 import type { CutStep } from './order'
 
 export type JobStep = CutStep & { shapeId: string; shapeName: string; shapeLayer: number }
@@ -48,7 +48,7 @@ export function buildBatchShape(shape: Shape, batch: BatchCfg): Shape {
       }
     }
   }
-  return { ...shape, id: shape.id, name: `${shape.name}（${cols}×${rows} 排版）`, contours }
+  return { ...shape, id: uid('batch'), name: `${shape.name}（${cols}×${rows} 排版）`, contours }
 }
 
 function shapeStart(s: ComputedShape): Pt {
