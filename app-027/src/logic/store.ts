@@ -4,17 +4,20 @@ import {
   DEFAULT_EXPORT_CFG,
   DEFAULT_SHEET,
   type BatchCfg,
+  type Bridge,
+  type Contour,
   type ContourWarning,
   type CutSettings,
   type ExportCfg,
   type MaterialPreset,
   type Project,
+  type Pt,
   type Shape,
   type Sheet,
 } from './types'
 import { computeShape, shapeSignature, type ComputedShape } from './pipeline'
 import { buildBatchShape, buildJob, type Job } from './job'
-import { uid } from './geometry'
+import { polygonArea, polylineLength, uid } from './geometry'
 import { importSvgText, type ImportResult } from './importer'
 import { defaultMaterials } from '@/data/materials'
 
@@ -53,27 +56,44 @@ function canUseStorage(): boolean {
 }
 
 export function loadState(): void {
-  state.materials = defaultMaterials()
+  // 只在启动时加载一次：重复调用不能覆盖内存里尚未落盘的新改动
+  if (state.ready) return
+  const fallback = defaultMaterials()
   if (!canUseStorage()) {
+    state.materials = fallback
     state.ready = true
     return
   }
+  let loadedOk = false
   try {
     const raw = localStorage.getItem(LS_KEY)
     if (raw) {
-      const parsed = JSON.parse(raw) as Persisted
-      if (parsed && Array.isArray(parsed.projects) && parsed.projects.length > 0) {
-        state.projects = [normalizeProject(parsed.projects[0])]
-      }
+      const parsed = JSON.parse(raw) as Partial<Persisted>
+      const materials = Array.isArray(parsed?.materials)
+        ? parsed.materials.map(normalizeMaterial).filter((m): m is MaterialPreset => m !== null)
+        : []
+      state.materials = materials.length > 0 ? materials : fallback
+      // 全部项目都要读回来（不能只读第一个），逐个补齐缺失字段
+      state.projects = Array.isArray(parsed?.projects)
+        ? parsed.projects.map(normalizeProject).filter((p): p is Project => p !== null)
+        : []
+      loadedOk = true
+    } else {
+      state.materials = fallback
     }
   } catch (e) {
+    state.materials = fallback
+    state.projects = []
     state.lastError = `本地数据读取失败：${(e as Error).message}`
   }
   state.ready = true
   recomputeAll()
+  // 补齐字段后的数据立刻写回本机（解析失败的原始数据不覆盖，保留现场）
+  if (loadedOk) scheduleSave()
 }
 
 export function saveNow(): void {
+  if (!state.ready) return
   if (!canUseStorage()) return
   try {
     const data: Persisted = { version: 1, projects: state.projects, materials: state.materials }
@@ -92,8 +112,153 @@ export function scheduleSave(): void {
   }, 250)
 }
 
-function normalizeProject(p: Project): Project {
-  return p
+// 刷新 / 关闭页面前把还在防抖队列里的改动立刻落盘
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', () => saveNow())
+}
+
+// ---------------- 读取旧数据：补齐缺失字段 ----------------
+
+const CONTOUR_WARNINGS: ContourWarning[] = [
+  'not_closed',
+  'self_intersect',
+  'duplicate',
+  'offset_clipped',
+  'offset_failed',
+  'bridge_degraded',
+  'too_short',
+]
+
+function defaultBatch(): BatchCfg {
+  return { enabled: false, rows: 2, cols: 2, gapXMm: 5, gapYMm: 5, sharedEdge: false, mode: 'repeat' }
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null
+}
+
+function num(v: unknown, fallback: number): number {
+  return typeof v === 'number' && Number.isFinite(v) ? v : fallback
+}
+
+function str(v: unknown, fallback: string): string {
+  return typeof v === 'string' && v.length > 0 ? v : fallback
+}
+
+function oneOf<T>(v: unknown, allowed: readonly T[], fallback: T): T {
+  return allowed.includes(v as T) ? (v as T) : fallback
+}
+
+/** 用默认值补齐缺失字段（旧版本数据可能缺后加的键），非法值（null/undefined）不覆盖默认值 */
+function mergeDefaults<T extends object>(defaults: T, raw: unknown): T {
+  const out = { ...defaults } as Record<string, unknown>
+  if (isRecord(raw)) {
+    for (const k of Object.keys(defaults)) {
+      const v = raw[k]
+      if (v !== undefined && v !== null) out[k] = v
+    }
+  }
+  return out as T
+}
+
+function normalizeContour(raw: unknown): Contour | null {
+  if (!isRecord(raw)) return null
+  const points: Pt[] = []
+  if (Array.isArray(raw.points)) {
+    for (const p of raw.points) {
+      if (isRecord(p) && typeof p.x === 'number' && typeof p.y === 'number' && Number.isFinite(p.x) && Number.isFinite(p.y)) {
+        points.push({ x: p.x, y: p.y })
+      }
+    }
+  }
+  const closed = raw.closed === true
+  const bridges: Bridge[] = []
+  if (Array.isArray(raw.bridges)) {
+    for (const b of raw.bridges) {
+      if (isRecord(b) && typeof b.atIndex === 'number' && Number.isFinite(b.atIndex)) {
+        bridges.push({ atIndex: b.atIndex, widthMm: num(b.widthMm, DEFAULT_CUT_SETTINGS.bridgeWidthMm) })
+      }
+    }
+  }
+  const warnings = Array.isArray(raw.warnings)
+    ? raw.warnings.filter((w): w is ContourWarning => CONTOUR_WARNINGS.includes(w as ContourWarning))
+    : []
+  const holes = Array.isArray(raw.holes) ? raw.holes.filter((h): h is string => typeof h === 'string') : []
+  return {
+    id: str(raw.id, uid('c')),
+    points,
+    closed,
+    // 派分值缺失时按点列重算，否则连刀点规则会拿到空值
+    area: num(raw.area, closed ? polygonArea(points) : 0),
+    length: num(raw.length, polylineLength(points, closed)),
+    holes,
+    bridges,
+    warnings,
+  }
+}
+
+function normalizeShape(raw: unknown): Shape | null {
+  if (!isRecord(raw)) return null
+  const contours = Array.isArray(raw.contours)
+    ? raw.contours.map(normalizeContour).filter((c): c is Contour => c !== null)
+    : []
+  return {
+    id: str(raw.id, uid('s')),
+    name: str(raw.name, '未命名形状'),
+    contours,
+    layer: Math.max(0, Math.round(num(raw.layer, 0))),
+  }
+}
+
+function normalizeProject(raw: unknown): Project | null {
+  if (!isRecord(raw)) return null
+  const now = Date.now()
+  const shapes = Array.isArray(raw.shapes)
+    ? raw.shapes.map(normalizeShape).filter((s): s is Shape => s !== null)
+    : []
+  const layerNames = Array.isArray(raw.layerNames)
+    ? raw.layerNames.filter((n): n is string => typeof n === 'string' && n.length > 0)
+    : []
+  const settings = mergeDefaults(DEFAULT_CUT_SETTINGS, raw.settings)
+  settings.order = 'inner_first'
+  settings.bridgeRule = oneOf(settings.bridgeRule, ['by_area', 'by_length', 'manual'] as const, DEFAULT_CUT_SETTINGS.bridgeRule)
+  settings.travelOptimize = oneOf(settings.travelOptimize, ['nearest', 'nearest_2opt'] as const, DEFAULT_CUT_SETTINGS.travelOptimize)
+  const exportCfg = mergeDefaults(DEFAULT_EXPORT_CFG, raw.export)
+  exportCfg.format = oneOf(exportCfg.format, ['plt', 'gcode', 'svg'] as const, DEFAULT_EXPORT_CFG.format)
+  exportCfg.unit = oneOf(exportCfg.unit, ['mm', '0.025mm'] as const, DEFAULT_EXPORT_CFG.unit)
+  exportCfg.origin = oneOf(exportCfg.origin, ['bottom_left', 'top_left'] as const, DEFAULT_EXPORT_CFG.origin)
+  const batch = mergeDefaults(defaultBatch(), raw.batch)
+  batch.mode = oneOf(batch.mode, ['repeat', 'four_way'] as const, 'repeat')
+  const materialId = str(raw.materialId, '')
+  const batchShapeId = str(raw.batchShapeId, '')
+  return {
+    id: str(raw.id, uid('p')),
+    name: str(raw.name, '未命名项目'),
+    createdAt: num(raw.createdAt, now),
+    updatedAt: num(raw.updatedAt, now),
+    shapes,
+    settings,
+    export: exportCfg,
+    sheet: mergeDefaults(DEFAULT_SHEET, raw.sheet),
+    materialId: state.materials.some((m) => m.id === materialId) ? materialId : (state.materials[0]?.id ?? ''),
+    layerNames: layerNames.length > 0 ? layerNames : ['图层 1'],
+    batch,
+    batchShapeId: shapes.some((s) => s.id === batchShapeId) ? batchShapeId : undefined,
+  }
+}
+
+function normalizeMaterial(raw: unknown): MaterialPreset | null {
+  if (!isRecord(raw) || typeof raw.id !== 'string' || raw.id.length === 0) return null
+  return {
+    id: raw.id,
+    name: str(raw.name, '未命名材料'),
+    paper: str(raw.paper, 'cardstock'),
+    force: num(raw.force, 100),
+    speedMmS: num(raw.speedMmS, 40),
+    passes: Math.max(1, Math.round(num(raw.passes, 1))),
+    bladeOffsetMm: num(raw.bladeOffsetMm, 0.25),
+    backing: str(raw.backing, ''),
+  }
 }
 
 export function materialOf(p: Project): MaterialPreset | null {
@@ -186,7 +351,7 @@ function newProject(name: string, shapes: Shape[]): Project {
     sheet: { ...DEFAULT_SHEET },
     materialId: state.materials[0]?.id ?? '',
     layerNames: ['图层 1'],
-    batch: { enabled: false, rows: 2, cols: 2, gapXMm: 5, gapYMm: 5, sharedEdge: false, mode: 'repeat' },
+    batch: defaultBatch(),
   }
 }
 
@@ -214,11 +379,56 @@ export function deleteProject(id: string): void {
   }
 }
 
+/**
+ * 复制项目：深拷贝所有形状 / 轮廓并全部换新 id（holes、batchShapeId 同步重映射），
+ * 副本与原件互不影响，派生缓存也各算各的。
+ */
 export function duplicateProject(id: string): Project | null {
   const src = getProject(id)
   if (!src) return null
-  const copy: Project = { ...src, id: uid('p'), name: `${src.name} 副本` }
+  const now = Date.now()
+  const shapeIds = new Map<string, string>()
+  const shapes: Shape[] = src.shapes.map((s) => {
+    const newShapeId = uid('s')
+    shapeIds.set(s.id, newShapeId)
+    const contourIds = new Map<string, string>()
+    const contours: Contour[] = s.contours.map((c) => {
+      const newContourId = uid('c')
+      contourIds.set(c.id, newContourId)
+      return {
+        id: newContourId,
+        points: c.points.map((p) => ({ ...p })),
+        closed: c.closed,
+        area: c.area,
+        length: c.length,
+        holes: [...c.holes],
+        bridges: c.bridges.map((b) => ({ ...b })),
+        warnings: [...c.warnings],
+      }
+    })
+    // holes 里存的是原件轮廓 id，重映射到副本的新 id
+    for (const nc of contours) {
+      nc.holes = nc.holes.map((h) => contourIds.get(h)).filter((h): h is string => h !== undefined)
+    }
+    return { id: newShapeId, name: s.name, contours, layer: s.layer }
+  })
+  const batchShapeId = src.batchShapeId ? shapeIds.get(src.batchShapeId) : undefined
+  const copy: Project = {
+    id: uid('p'),
+    name: `${src.name} 副本`,
+    createdAt: now,
+    updatedAt: now,
+    shapes,
+    settings: { ...src.settings },
+    export: { ...src.export },
+    sheet: { ...src.sheet },
+    materialId: src.materialId,
+    layerNames: [...src.layerNames],
+    batch: src.batch ? { ...src.batch } : undefined,
+    batchShapeId,
+  }
   state.projects.unshift(copy)
+  recomputeProject(copy, true)
   scheduleSave()
   return copy
 }
@@ -260,7 +470,7 @@ export function updateSheet(p: Project, sheet: Sheet): void {
 }
 
 export function updateBatch(p: Project, patch: Partial<BatchCfg>): void {
-  if (!p.batch) p.batch = { enabled: false, rows: 2, cols: 2, gapXMm: 5, gapYMm: 5, sharedEdge: false, mode: 'repeat' }
+  if (!p.batch) p.batch = defaultBatch()
   Object.assign(p.batch, patch)
   touch(p)
 }

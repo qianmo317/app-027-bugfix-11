@@ -101,7 +101,8 @@ function remove(id: string, name: string): void {
 
 function copy(id: string): void {
   const p = store.duplicateProject(id)
-  if (p) void router.push(`/design/${id}`)
+  // 复制完打开新生成的副本，而不是原件
+  if (p) void router.push(`/design/${p.id}`)
 }
 
 function fmtTime(ts: number): string {
